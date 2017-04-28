@@ -1,0 +1,244 @@
+#include <PubSubClient.h>
+#include <ESP8266WiFi.h>
+#include <DHT.h>
+
+#define DHTPIN            14               // choose a pin you want to use to read the DHT sensor.
+#define DHTTYPE           DHT11           // DHT 11 
+DHT dht(DHTPIN, DHTTYPE);
+char* tempTopic = "temp/sensor12";      // Set to Topic you want to use for MQTT
+char* humidityTopic  = "hum/sensor3";  // Set to Topic you want to use for MQTT
+const long interval = 300000;                  //(ms) - 300000 ms between reports
+unsigned long resetPeriod = 86400000;// 1 day - this is the period after which we restart the CPU, to deal with odd memory leak errors
+unsigned long currentTime = millis();
+unsigned long prevTime; 
+unsigned long prevTimeHB;
+const long intervalHB = 20000;
+float h, t;
+  
+
+/////EDIT THESE LINES TO MATCH YOUR SETUP //////
+#define MQTT_SERVER "192.***.***.**"
+const char* ssid = "*************";
+const char* password = "*******************";
+
+///// Setup for Button checking /////
+const int  SwitchPin = 13;          // the pin that the switch is attached to
+/////////// Variables ///////////////
+int SwitchState = 0;              // current state of the switch
+int PreviousSwitchState = 0;     // previous state of the switch
+
+//////topic to publish to for controlling the other ESP module /////
+char* lightTopic = "sonoff/button1";
+
+WiFiClient wifiClient;
+PubSubClient client(MQTT_SERVER, 1883,wifiClient);
+
+void setup() {
+  
+//start the serial line for debugging
+Serial.begin(115200);
+delay(100);
+
+//start wifi subsystem
+WiFi.begin(ssid, password);
+
+//attempt to connect to the WIFI network and then connect to the MQTT server
+  
+reconnect();
+
+//wait a bit before starting the main loop
+      delay(2000);
+}
+
+void loop(){
+
+if (WiFi.status() == WL_CONNECTED) {
+    if (!client.connected()) {
+       client.loop();
+      reconnect();
+      delay(100);
+ 
+    checkButton();     
+   read_sensors();
+   }
+  }  
+  checkButton();
+     heartbeat();
+  checkButton();
+     heartbeat();
+  checkButton();
+     heartbeat();
+  checkButton();
+     heartbeat();
+    
+   client.loop();
+   read_sensors();
+   checkButton();
+   
+///// reset after a day to avoid memory leaks /////
+  if(millis()>resetPeriod){
+    ESP.restart();
+ }
+}
+
+/////MQTT callback //////
+void callback(char* topic, byte* payload, unsigned int length) {
+  //we're not subscribed to any topics so we dont need to have anything here
+}
+
+/////// check if the button //////////
+void checkButton(){
+
+SwitchState = digitalRead(SwitchPin);           // read the switch pin (12)  
+delay (200);                                   // delay for poor man debounce
+ if (SwitchState != PreviousSwitchState)  {   // compare the SwitchState to its previous state
+   if (SwitchState == HIGH ) {
+     client.publish("sonoff/button1", "1"); //  publish to MQTT if the button was pressed
+  }                  
+ }
+}
+
+/////// Heartbeat///////////
+void heartbeat(){ 
+ int thisPin = 1; 
+ pinMode(thisPin, OUTPUT);
+ prevTimeHB = 0;
+  
+ if(currentTime - prevTimeHB >= intervalHB ){
+    prevTimeHB = currentTime;
+ 
+ for ( int timer = 197; timer <= 200 ;timer++) {
+                                  // turn the pin on:
+    digitalWrite(thisPin, HIGH);
+    delay(timer);
+                               // turn the pin off:
+    digitalWrite(thisPin, LOW);
+    delay(timer);
+    Serial.print(timer);
+      Serial.print("\n\r........ \n\r");
+  if ( timer >= 200 )
+  break; 
+  }
+ }
+}
+
+////// DHT11 read /////////	
+void read_sensors() {
+
+prevTime = 0;
+static int counter = 0;
+  if(currentTime - prevTime >= interval ){
+    prevTime = currentTime;
+    Serial.println("checking again");
+    Serial.println(prevTime);
+    
+    h = dht.readHumidity();
+    t = dht.readTemperature();
+    
+    h = h*1.23;
+    t = t*1.1;
+    
+    // Check if any reads failed and exit early (to try again).
+    if (isnan(h) || isnan(t)) {
+      Serial.println("Failed to read from DHT sensor!");
+    }
+    else if(!client.connected()){
+      Serial.println("Connection to broker lost; retrying");
+   }
+    else{
+      char* tPayload = f2s(t,0);
+      char* hPayload = f2s(h,0);
+      
+      Serial.println(t);
+      Serial.println(h);
+      
+      Serial.println(tPayload);
+      Serial.println(hPayload);
+
+      client.publish(tempTopic, tPayload);
+      client.publish(humidityTopic, hPayload);
+
+      Serial.println("published environmental data");
+  }
+ }
+     client.loop();
+}
+
+/* float to string
+ * f is the float to turn into a string
+ * p is the precision (number of decimals)
+ * return a string representation of the float.
+ */
+char *f2s(float f, int p){
+  char * pBuff;                         // use to remember which part of the buffer to use for dtostrf
+  const int iSize = 10;                 // number of buffers, one for each float before wrapping around
+  static char sBuff[iSize][20];         // space for 20 characters including NULL terminator for each float
+  static int iCount = 0;                // keep a tab of next place in sBuff to use
+  pBuff = sBuff[iCount];                // use this buffer
+  if(iCount >= iSize -1){               // check for wrap
+    iCount = 0;                         // if wrapping start again and reset
+  }
+  else{
+    iCount++;                           // advance the counter
+  }
+  return dtostrf(f, 0, p, pBuff);       // call the library function
+}
+
+///// MQTT Sub //////
+void messageReceived(String topic, String payload, char * bytes, unsigned int length) {
+  Serial.print("incoming: ");
+  Serial.print(topic);
+  Serial.print(" - ");
+  Serial.print(payload);
+  Serial.println();
+}
+
+/////network reconnect function /////
+void reconnect(){
+/////attempt to connect to the wifi if connection is lost
+  if(WiFi.status() != WL_CONNECTED){
+/////loop while we wait for connection
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+    }
+/////print out some more debug once connected
+    Serial.println("");
+    Serial.println("WiFi connected");  
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+  }
+/////make sure we are connected to WIFI before attemping to reconnect to MQTT
+  if(WiFi.status() == WL_CONNECTED){
+///// Loop until we're reconnected to the MQTT server
+    while (!client.connected()) {
+      Serial.print("Attempting MQTT connection...");
+///// Generate client name based on MAC address and last 8 bits of microsecond counter
+      String clientName;
+      clientName += "esp8266soldering_timer";
+      uint8_t mac[6];
+      WiFi.macAddress(mac);
+      clientName += macToStr(mac);
+/////if connected, subscribe to the topic(s) we want to be notified about/////
+      if (client.connect((char*) clientName.c_str())) {
+        Serial.print("\tMTQQ Connected");
+        client.subscribe("sonoff/button1");
+       }
+      //otherwise print failed for debugging
+      else{Serial.println("\tFailed."); abort();
+	  }
+     }
+    }
+}
+//generate unique name from MAC addr
+String macToStr(const uint8_t* mac){
+  String result;
+  for (int i = 0; i < 6; ++i) {
+    result += String(mac[i], 16);
+    if (i < 5){
+      result += ':';
+    }
+   }
+  return result;
+  }
+ 
