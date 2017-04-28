@@ -7,11 +7,10 @@
 DHT dht(DHTPIN, DHTTYPE);
 char* tempTopic = "temp/sensor12";      // Set to Topic you want to use for MQTT
 char* humidityTopic  = "hum/sensor3";  // Set to Topic you want to use for MQTT
-const long interval = 300000;                  //(ms) - 300000 ms between reports
+const long interval = 30000;                  //(ms) - 30000 ms between reports
 unsigned long resetPeriod = 86400000;// 1 day - this is the period after which we restart the CPU, to deal with odd memory leak errors
-unsigned long currentTime = millis();
-unsigned long prevTime; 
-unsigned long prevTimeHB;
+unsigned long prevTime = 0; 
+unsigned long prevTimeHB = 0;
 const long intervalHB = 20000;
 float h, t;
   
@@ -100,12 +99,13 @@ delay (200);                                   // delay for poor man debounce
 
 /////// Heartbeat///////////
 void heartbeat(){ 
+unsigned long currentTimeHB = millis();
  int thisPin = 1; 
  pinMode(thisPin, OUTPUT);
  prevTimeHB = 0;
   
- if(currentTime - prevTimeHB >= intervalHB ){
-    prevTimeHB = currentTime;
+ if(currentTimeHB - prevTimeHB >= intervalHB ){
+    prevTimeHB = currentTimeHB;
  
  for ( int timer = 197; timer <= 200 ;timer++) {
                                   // turn the pin on:
@@ -124,7 +124,7 @@ void heartbeat(){
 
 ////// DHT11 read /////////	
 void read_sensors() {
-
+unsigned long currentTime = millis();
 prevTime = 0;
 static int counter = 0;
   if(currentTime - prevTime >= interval ){
