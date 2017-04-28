@@ -7,11 +7,11 @@
 DHT dht(DHTPIN, DHTTYPE);
 char* tempTopic = "temp/sensor12";      // Set to Topic you want to use for MQTT
 char* humidityTopic  = "hum/sensor3";  // Set to Topic you want to use for MQTT
-const long interval = 30000;                  //(ms) - 30000 ms between reports
+const long interval = 300000;                  //(ms) - 300000 ms between reports
 unsigned long resetPeriod = 86400000;// 1 day - this is the period after which we restart the CPU, to deal with odd memory leak errors
 unsigned long prevTime = 0; 
 unsigned long prevTimeHB = 0;
-const long intervalHB = 20000;
+const long intervalHB = 200000;
 float h, t;
   
 
