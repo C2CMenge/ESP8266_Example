@@ -1,19 +1,20 @@
 #include <PubSubClient.h>
 #include <ESP8266WiFi.h>
 #include <DHT.h>
+#include <Metro.h>
 
 #define DHTPIN            14               // choose a pin you want to use to read the DHT sensor.
 #define DHTTYPE           DHT11           // DHT 11 
 DHT dht(DHTPIN, DHTTYPE);
 char* tempTopic = "temp/sensor12";      // Set to Topic you want to use for MQTT
 char* humidityTopic  = "hum/sensor3";  // Set to Topic you want to use for MQTT
-const long interval = 300000;                  //(ms) - 300000 ms between reports
-unsigned long resetPeriod = 86400000;// 1 day - this is the period after which we restart the CPU, to deal with odd memory leak errors
-unsigned long prevTime = 0; 
-unsigned long prevTimeHB = 0;
-const long intervalHB = 200000;
+unsigned long resetPeriod = 86400000; // 1 day - this is the period after which we restart the CPU, to deal with odd memory leak errors
 float h, t;
-  
+// set the Timer for the Heartbeat //
+Metro metro0 = Metro(100000);
+
+// set the Timer for read the sensors and publish the data to the broker //
+Metro metro1 = Metro(300000);  
 
 /////EDIT THESE LINES TO MATCH YOUR SETUP //////
 #define MQTT_SERVER "192.***.***.**"
@@ -61,15 +62,8 @@ if (WiFi.status() == WL_CONNECTED) {
    read_sensors();
    }
   }  
-  checkButton();
-     heartbeat();
-  checkButton();
-     heartbeat();
-  checkButton();
-     heartbeat();
-  checkButton();
-     heartbeat();
-    
+   checkButton();
+   heartbeat();
    client.loop();
    read_sensors();
    checkButton();
@@ -99,70 +93,50 @@ delay (200);                                   // delay for poor man debounce
 
 /////// Heartbeat///////////
 void heartbeat(){ 
-unsigned long currentTimeHB = millis();
+
  int thisPin = 1; 
  pinMode(thisPin, OUTPUT);
- prevTimeHB = 0;
   
- if(currentTimeHB - prevTimeHB >= intervalHB ){
-    prevTimeHB = currentTimeHB;
- 
- for ( int timer = 197; timer <= 200 ;timer++) {
-                                  // turn the pin on:
-    digitalWrite(thisPin, HIGH);
-    delay(timer);
-                               // turn the pin off:
-    digitalWrite(thisPin, LOW);
-    delay(timer);
-    Serial.print(timer);
-      Serial.print("\n\r........ \n\r");
-  if ( timer >= 200 )
-  break; 
-  }
+ if(metro0.check() == 1){
+  
+  digitalWrite(thisPin, LOW);
+  delay(50);
+  digitalWrite(thisPin, HIGH);
+  delay(100);
+  digitalWrite(thisPin, LOW);
+  delay(50);
+  digitalWrite(thisPin, HIGH);
  }
+ yield();
 }
 
 ////// DHT11 read /////////	
 void read_sensors() {
-unsigned long currentTime = millis();
-prevTime = 0;
+
+char* tPayload = f2s(t,0);
+char* hPayload = f2s(h,0);
 static int counter = 0;
-  if(currentTime - prevTime >= interval ){
-    prevTime = currentTime;
-    Serial.println("checking again");
-    Serial.println(prevTime);
+  if(metro1.check() == 1){
     
     h = dht.readHumidity();
     t = dht.readTemperature();
-    
     h = h*1.23;
     t = t*1.1;
-    
-    // Check if any reads failed and exit early (to try again).
-    if (isnan(h) || isnan(t)) {
-      Serial.println("Failed to read from DHT sensor!");
-    }
-    else if(!client.connected()){
-      Serial.println("Connection to broker lost; retrying");
-   }
+if (isnan(h) || isnan(t)){
+	Serial.println("Error read Sensor");
+	}
+else if(!client.connected()){
+	Serial.println("Connection lost");
+  }
     else{
-      char* tPayload = f2s(t,0);
-      char* hPayload = f2s(h,0);
-      
-      Serial.println(t);
-      Serial.println(h);
-      
-      Serial.println(tPayload);
-      Serial.println(hPayload);
-
+	char* tPayload = f2s(t,0);
+    char* hPayload = f2s(h,0);
       client.publish(tempTopic, tPayload);
       client.publish(humidityTopic, hPayload);
-
-      Serial.println("published environmental data");
-  }
  }
-     client.loop();
 }
+    client.loop();
+}	
 
 /* float to string
  * f is the float to turn into a string
