@@ -91,7 +91,7 @@ delay (200);                                   // delay for poor man debounce
  }
 }
 
-/////// Heartbeat///////////
+/////// Heartbeat///Blink 182////////
 void heartbeat(){ 
 
  int thisPin = 1; 
@@ -100,13 +100,25 @@ void heartbeat(){
  if(metro0.check() == 1){
   
   digitalWrite(thisPin, LOW);
-  delay(50);
+  delay(100);
   digitalWrite(thisPin, HIGH);
   delay(100);
   digitalWrite(thisPin, LOW);
-  delay(50);
+  delay(100);
   digitalWrite(thisPin, HIGH);
- }
+  delay(10);
+  digitalWrite(thisPin, LOW);
+  delay(100);
+  digitalWrite(thisPin, HIGH);
+  delay(100);
+  digitalWrite(thisPin, LOW);
+  delay(10);
+  digitalWrite(thisPin, HIGH);
+  delay(100);
+  digitalWrite(thisPin, LOW);
+  delay(10);
+  digitalWrite(thisPin, HIGH);
+   }
  yield();
 }
 
